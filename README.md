@@ -37,4 +37,9 @@ Example Use
 	$ LD_PRELOAD=./crypthook.so CH_KEY=donthackmebro ncat server 5000
 
 
+PCAP of tunneled SSH session
+-----------------------------
+
+![SSH inside of tunnel](http://i.imgur.com/7uTSW2q.png)
+
 [www.chokepoint.net](http://www.chokepoint.net)
