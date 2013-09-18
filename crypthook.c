@@ -28,7 +28,7 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 #define MAX_LEN 65535
 
 // Zeroes are good enough for SSH, its good enough for this example
-// Change it to something clever
+// CHANGE THIS to something clever
 #define IVEC "\0\0\0\0\0\0\0\0" 
 
 #define BLOCK_CIPHER EVP_aes_256_cbc() 	// EVP_aes_256_cbc() and EVP_bf_cbc() have been tested
@@ -38,6 +38,7 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 /* Check environment variables
  * CH_KEY should be the base pass phrase	
  * if key isn't given, revert back to PASSPHRASE.
+ * If you're going to use this live, SALT THE HASH!
  */
 void gen_key(char *phrase, int len) {
 	char *key_var = getenv(KEY_VAR);
@@ -53,7 +54,7 @@ void gen_key(char *phrase, int len) {
 	}
 	SHA256_Final((unsigned char *)digest,&ctx);
 	
-	strncpy(phrase,digest,len);
+	memcpy(phrase,digest,len);
 }
 
 int encrypt_data(char *in, int len, char *out) {
