@@ -35,26 +35,23 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 #define BLOCK_SIZE 16 					// Blowfish = 8 AES = 16
 #define KEY_SIZE 32  					// Blowfish is variable, lets go w/ 256 bits
 
+// Used in PBKDF2 key generation
+#define ITERATIONS 1000					
+			
 /* Check environment variables
  * CH_KEY should be the base pass phrase	
  * if key isn't given, revert back to PASSPHRASE.
- * If you're going to use this live, SALT THE HASH!
+ * Remember to change the salt
  */
 void gen_key(char *phrase, int len) {
 	char *key_var = getenv(KEY_VAR);
-	char digest[KEY_SIZE]; 
-	
-	SHA256_CTX ctx;
-	SHA256_Init(&ctx);
+	const unsigned char salt[]="changeme"; // salt should be changed. both sides need the same salt.
 	
 	if (key_var) {
-		SHA256_Update(&ctx,key_var,strlen(key_var));
+		PKCS5_PBKDF2_HMAC_SHA1(key_var,strlen(key_var),salt,strlen((char*)salt),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
 	} else {
-		SHA256_Update(&ctx,PASSPHRASE,strlen(PASSPHRASE));
+		PKCS5_PBKDF2_HMAC_SHA1(PASSPHRASE,strlen(PASSPHRASE),salt,strlen((char*)salt),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
 	}
-	SHA256_Final((unsigned char *)digest,&ctx);
-	
-	memcpy(phrase,digest,len);
 }
 
 int encrypt_data(char *in, int len, char *out) {
@@ -68,7 +65,7 @@ int encrypt_data(char *in, int len, char *out) {
 	memset(temp,0x00,MAX_LEN);
 	memcpy(temp,in,len);
 	
-	gen_key(key,sizeof(key)); // Determine key based on environment 
+	gen_key(key,KEY_SIZE); // Determine key based on environment 
 	
 	EVP_CIPHER_CTX ctx;
 	EVP_CIPHER_CTX_init (&ctx);
@@ -103,7 +100,7 @@ int decrypt_data(char *in, int len, char *out) {
 	
 	memset(outbuf,0x00,MAX_LEN);
 	
-	gen_key(key,sizeof(key)); // Determine key based on environment 
+	gen_key(key,KEY_SIZE); // Determine key based on environment 
 	
 	EVP_CIPHER_CTX ctx;
 	EVP_CIPHER_CTX_init (&ctx);
