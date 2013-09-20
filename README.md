@@ -7,13 +7,15 @@ hooking the base system calls for network communication send/sendto
 and recv/recvfrom. Crypthook will work with any existing application 
 that relies on these system calls.
 
+Crypto
+-----------------------------
 
-Tested Algorithms
-----------------------------
-
-* Blowfish
-* Advanced Encryption Standard
-
+CryptHook relies on AES in GCM mode using a 256 bit key. Keys are 
+generated from passphrases using PBKDF2. IVs are constructed on the 
+fly using random bytes of data, and the same key derivation technique 
+to reconstruct the initialization vector on the receiving end in order 
+to keep overhead to a minimum. Authentication of each packet is also 
+verified.
 
 Dependencies
 -----------------------------
@@ -35,11 +37,5 @@ Example Use
 	
 	Client
 	$ LD_PRELOAD=./crypthook.so CH_KEY=donthackmebro ncat server 5000
-
-
-PCAP of tunneled SSH session
------------------------------
-
-![SSH inside of tunnel](http://i.imgur.com/7uTSW2q.png)
 
 [www.chokepoint.net](http://www.chokepoint.net)
