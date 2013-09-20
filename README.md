@@ -17,6 +17,28 @@ to reconstruct the initialization vector on the receiving end in order
 to keep overhead to a minimum. Authentication of each packet is also 
 verified.
 
+DISCLAIMER
+=============================
+
+The following characteristics must be changed if you are going to use 
+this for anything reasonably secure. All configuration can be changed 
+in crypthook.c using the following #defines.
+
+	#define KEY_SALT "changeme"
+	#define IV_SALT "changeme"
+	#define ITERATIONS 1000
+	
+	#define PASSPHRASE "Hello NSA"
+	
+KEY_SALT and ITERATIONS are used in the key derivation process to 
+change the plain text passphrase into a 256 bit key.
+
+IV_SALT and ITERATIONS are used in the IV derivation process to change 
+the 8 bytes of random data into a full IV for use with the algorithm.
+
+PASSPHRASE is simply the default passphrase if none is provided via 
+the CH_KEY environment variable. 
+
 Dependencies
 -----------------------------
 

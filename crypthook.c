@@ -20,8 +20,6 @@
 #include <openssl/rand.h>
 #include <string.h>
 
-#include <sys/stat.h>
-
 /* Use these to link to actual functions */
 static ssize_t (*old_recv)(int sockfd, void *buf, size_t len, int flags);
 static ssize_t (*old_send)(int sockfd, void *buf, size_t len, int flags);
@@ -32,9 +30,10 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 #define PASSPHRASE "Hello NSA"
 #define MAX_LEN 65535
 					
-#define KEY_SIZE 32  	
-	
-#define PACKET_HEADER 0x17		// Added to front of each packet
+#define KEY_SIZE 32  	        // AES 256 in GCM mode.
+#define KEY_SALT "changeme"     // Used in key derivation. CHANGE THIS.	
+
+#define PACKET_HEADER 0x17		// Packet Identifier added to each header
 
 #define IV_RAND 8 // use 8 bytes of random data to derive the IV on the receiving end
 #define IV_SALT "changeme" // Used for deriving the IV
@@ -45,7 +44,7 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 // 16 bytes authentication
 #define HEADER_SIZE 25 
 
-// Used in PBKDF2 key generation
+// Used in PBKDF2 key generation. CHANGE THIS FROM DEFAULT
 #define ITERATIONS 1000					
 			
 /* Check environment variables
@@ -55,12 +54,11 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
  */
 void gen_key(char *phrase, int len) {
 	char *key_var = getenv(KEY_VAR);
-	const unsigned char salt[]="changeme"; // salt should be changed. both sides need the same salt.
 	
 	if (key_var) {
-		PKCS5_PBKDF2_HMAC_SHA1(key_var,strlen(key_var),salt,strlen((char*)salt),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
+		PKCS5_PBKDF2_HMAC_SHA1(key_var,strlen(key_var),KEY_SALT,strlen(KEY_SALT),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
 	} else {
-		PKCS5_PBKDF2_HMAC_SHA1(PASSPHRASE,strlen(PASSPHRASE),salt,strlen((char*)salt),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
+		PKCS5_PBKDF2_HMAC_SHA1(PASSPHRASE,strlen(PASSPHRASE),KEY_SALT,strlen(KEY_SALT),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
 	}
 }
 
@@ -70,7 +68,7 @@ void gen_iv(int new, char *iv, int len, unsigned char *random_data) {
 		RAND_bytes(random_data,IV_RAND);
 	} 
 	
-	PKCS5_PBKDF2_HMAC_SHA1(random_data,IV_RAND,IV_SALT,strlen(IV_SALT),ITERATIONS,IV_SIZE,(unsigned char *)iv);
+	PKCS5_PBKDF2_HMAC_SHA1(random_data,IV_RAND,IV_SALT,strlen(IV_SALT),ITERATIONS,IV_SIZE,iv);
 }
 
 int encrypt_data(char *in, int len, char *out) {
@@ -110,6 +108,7 @@ int encrypt_data(char *in, int len, char *out) {
 	
 	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag);
 	
+	// Add header information
 	out[0]=PACKET_HEADER;
 	step=&out[1];	
 	memcpy(step,random_data,IV_RAND);
