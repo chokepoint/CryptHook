@@ -32,17 +32,14 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 					
 #define KEY_SIZE 32  	        // AES 256 in GCM mode.
 #define KEY_SALT "changeme"     // Used in key derivation. CHANGE THIS.	
+#define IV_SIZE 12				// 12 bytes used for AES 256 in GCM mode
 
 #define PACKET_HEADER 0x17		// Packet Identifier added to each header
 
-#define IV_RAND 8 // use 8 bytes of random data to derive the IV on the receiving end
-#define IV_SALT "changeme" // Used for deriving the IV
-#define IV_SIZE 12
-
 // 1 byte packet identifier
-// 8 bytes random data
-// 16 bytes authentication
-#define HEADER_SIZE 25 
+// 12 bytes IV
+// 16 bytes MAC
+#define HEADER_SIZE 29 
 
 // Used in PBKDF2 key generation. CHANGE THIS FROM DEFAULT
 #define ITERATIONS 1000					
@@ -62,21 +59,11 @@ void gen_key(char *phrase, int len) {
 	}
 }
 
-void gen_iv(int new, char *iv, int len, unsigned char *random_data) {
-	// Generate random bytes if we're sending
-	if (new == 1) {
-		RAND_bytes(random_data,IV_RAND);
-	} 
-	
-	PKCS5_PBKDF2_HMAC_SHA1(random_data,IV_RAND,IV_SALT,strlen(IV_SALT),ITERATIONS,IV_SIZE,iv);
-}
-
 int encrypt_data(char *in, int len, char *out) {
 	unsigned char outbuf[MAX_LEN];
 	unsigned char temp[MAX_LEN];
 	unsigned char iv[IV_SIZE];
 	unsigned char key[KEY_SIZE];
-	unsigned char random_data[IV_RAND];
 	unsigned char tag[16];
 	
 	unsigned char *step;
@@ -87,7 +74,7 @@ int encrypt_data(char *in, int len, char *out) {
 	memcpy(temp,in,len);
 	
 	gen_key(key,KEY_SIZE); // Determine key based on environment 
-	gen_iv(1,iv,IV_SIZE,random_data);
+	RAND_bytes(iv,IV_SIZE); // Generate random IV
 	
 	EVP_CIPHER_CTX *ctx;
 	ctx = EVP_CIPHER_CTX_new();
@@ -111,8 +98,8 @@ int encrypt_data(char *in, int len, char *out) {
 	// Add header information
 	out[0]=PACKET_HEADER;
 	step=&out[1];	
-	memcpy(step,random_data,IV_RAND);
-	step+=IV_RAND;
+	memcpy(step,iv,IV_SIZE);
+	step+=IV_SIZE;
 	memcpy(step,tag,sizeof(tag));
 	step+=sizeof(tag);
 	memcpy(step,outbuf,outlen+tmplen);
@@ -125,7 +112,6 @@ int decrypt_data(char *in, int len, char *out) {
 	unsigned char outbuf[MAX_LEN];
 	unsigned char iv[IV_SIZE];
 	unsigned char key[KEY_SIZE];
-	unsigned char random_data[IV_RAND];
 	unsigned char tag[16];
 	char *step;
 	
@@ -135,13 +121,12 @@ int decrypt_data(char *in, int len, char *out) {
 	
 	// header information
 	step=in+1;
-	memcpy(random_data,step,IV_RAND);
-	step+=IV_RAND;
-	memcpy(tag,step,16);
+	memcpy(iv,step,IV_SIZE); // Extract the IV
+	step+=IV_SIZE;
+	memcpy(tag,step,16); // Extract the MAC
 	step+=16;
 
 	gen_key(key,KEY_SIZE); // Determine key based on environment 
-	gen_iv(0,iv,IV_SIZE,random_data);
 	
 	EVP_CIPHER_CTX *ctx;
 	ctx = EVP_CIPHER_CTX_new();
