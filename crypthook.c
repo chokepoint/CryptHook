@@ -43,27 +43,28 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 
 // Used in PBKDF2 key generation. CHANGE THIS FROM DEFAULT
 #define ITERATIONS 1000					
+
+static char glob_key[KEY_SIZE]="\00";
 			
 /* Check environment variables
  * CH_KEY should be the base pass phrase	
  * if key isn't given, revert back to PASSPHRASE.
  * Remember to change the salt
  */
-void gen_key(char *phrase, int len) {
+static void gen_key(void) {
 	char *key_var = getenv(KEY_VAR);
-	
+
 	if (key_var) {
-		PKCS5_PBKDF2_HMAC_SHA1(key_var,strlen(key_var),KEY_SALT,strlen(KEY_SALT),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
+		PKCS5_PBKDF2_HMAC_SHA1(key_var,strlen(key_var),(const unsigned char *)KEY_SALT,strlen(KEY_SALT),ITERATIONS,KEY_SIZE,(unsigned char *)glob_key);
 	} else {
-		PKCS5_PBKDF2_HMAC_SHA1(PASSPHRASE,strlen(PASSPHRASE),KEY_SALT,strlen(KEY_SALT),ITERATIONS,KEY_SIZE,(unsigned char *)phrase);
+		PKCS5_PBKDF2_HMAC_SHA1(PASSPHRASE,strlen(PASSPHRASE),(const unsigned char *)KEY_SALT,strlen(KEY_SALT),ITERATIONS,KEY_SIZE,(unsigned char *)glob_key);
 	}
 }
 
-int encrypt_data(char *in, int len, char *out) {
+static int encrypt_data(char *in, int len, char *out) {
 	unsigned char outbuf[MAX_LEN];
 	unsigned char temp[MAX_LEN];
 	unsigned char iv[IV_SIZE];
-	unsigned char key[KEY_SIZE];
 	unsigned char tag[16];
 	
 	unsigned char *step;
@@ -73,13 +74,14 @@ int encrypt_data(char *in, int len, char *out) {
 	memset(temp,0x00,MAX_LEN);
 	memcpy(temp,in,len);
 	
-	gen_key(key,KEY_SIZE); // Determine key based on environment 
+	if (glob_key[0] == 0x00) // Generate key if its the first packet
+		gen_key(); 
 	RAND_bytes(iv,IV_SIZE); // Generate random IV
 	
 	EVP_CIPHER_CTX *ctx;
 	ctx = EVP_CIPHER_CTX_new();
 	EVP_CIPHER_CTX_init (ctx);
-	EVP_EncryptInit_ex (ctx, EVP_aes_256_gcm() , NULL, (const unsigned char *)key, (const unsigned char *)iv);
+	EVP_EncryptInit_ex (ctx, EVP_aes_256_gcm() , NULL, (const unsigned char *)glob_key, (const unsigned char *)iv);
 
 	if (!EVP_EncryptUpdate (ctx, outbuf, &outlen, (const unsigned char *)temp, len)) {
 		fprintf(stderr, "[!] Error in EVP_EncryptUpdate()\n");
@@ -97,7 +99,7 @@ int encrypt_data(char *in, int len, char *out) {
 	
 	// Add header information
 	out[0]=PACKET_HEADER;
-	step=&out[1];	
+	step=(unsigned char *)&out[1];	
 	memcpy(step,iv,IV_SIZE);
 	step+=IV_SIZE;
 	memcpy(step,tag,sizeof(tag));
@@ -108,10 +110,9 @@ int encrypt_data(char *in, int len, char *out) {
 	return outlen+tmplen+HEADER_SIZE;
 }
 
-int decrypt_data(char *in, int len, char *out) {
+static int decrypt_data(char *in, int len, char *out) {
 	unsigned char outbuf[MAX_LEN];
 	unsigned char iv[IV_SIZE];
-	unsigned char key[KEY_SIZE];
 	unsigned char tag[16];
 	char *step;
 	
@@ -126,12 +127,13 @@ int decrypt_data(char *in, int len, char *out) {
 	memcpy(tag,step,16); // Extract the MAC
 	step+=16;
 
-	gen_key(key,KEY_SIZE); // Determine key based on environment 
+	if (glob_key[0] == 0x00)   // Generate key if its the first packet
+		gen_key(); 
 	
 	EVP_CIPHER_CTX *ctx;
 	ctx = EVP_CIPHER_CTX_new();
 	EVP_CIPHER_CTX_init (ctx);
-	EVP_DecryptInit_ex (ctx, EVP_aes_256_gcm() , NULL, (const unsigned char *)key, (const unsigned char *)iv);
+	EVP_DecryptInit_ex (ctx, EVP_aes_256_gcm() , NULL, (const unsigned char *)glob_key, (const unsigned char *)iv);
 	
 	EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL);
 	
