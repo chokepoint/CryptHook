@@ -1,7 +1,10 @@
+CFLAGS+=	-Wall
+LDFLAGS+=	-shared -fpic -ldl -lcrypto
+
 all: crypthook
 
 crypthook:
-	gcc crypthook.c -o crypthook.so -Wall -shared -fpic -ldl -lcrypto
+	$(CC) crypthook.c -o crypthook.so $(CFLAGS) $(LDFLAGS)
 
 clean: 
 	rm crypthook.so
