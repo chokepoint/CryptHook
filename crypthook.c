@@ -2,7 +2,7 @@
  * CryptHook
  * Secure TCP/UDP wrapper
  * www.chokepoint.net
- * Tested with both blowfish and AES algorithms
+ * Tested with AES algorithm
  * Example:
  * $ LD_PRELOAD=crypthook.so CH_KEY=omghax ncat -l -p 5000
  * $ LD_PRELOAD=crypthook.so CH_KEY=omghax ncat localhost 5000
@@ -14,7 +14,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <dlfcn.h>
-#include <rhash/rhash.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
@@ -28,7 +27,7 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 
 #define KEY_VAR "CH_KEY"
 #define PASSPHRASE "Hello NSA"
-#define MAX_LEN 65535
+#define MAX_LEN 4125
 					
 #define KEY_SIZE 32  	        // AES 256 in GCM mode.
 #define KEY_SALT "changeme"     // Used in key derivation. CHANGE THIS.	
@@ -212,7 +211,6 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *
 		return old_recvfrom(sockfd, buf, len, flags, src_addr, addrlen);
 	
 	ret = old_recvfrom(sockfd, (void *)temp, MAX_LEN, flags, src_addr, addrlen);
-	
 	if (ret < 1) { // Nothing to decrypt 
 		return ret;
 	}
