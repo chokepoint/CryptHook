@@ -7,7 +7,7 @@
  * $ LD_PRELOAD=crypthook.so CH_KEY=omghax ncat -l -p 5000
  * $ LD_PRELOAD=crypthook.so CH_KEY=omghax ncat localhost 5000
  * Packet Format:
- * [algo][iv][hmac][payload]
+ * [algo][len][iv][hmac][payload]
  */
 #define _GNU_SOURCE
 
@@ -38,7 +38,7 @@ static ssize_t (*old_sendto)(int sockfd, void *buf, size_t len, int flags, const
 // 1 byte packet identifier
 // 12 bytes IV
 // 16 bytes MAC
-#define HEADER_SIZE 29 
+#define HEADER_SIZE 31 
 
 // Used in PBKDF2 key generation. CHANGE THIS FROM DEFAULT
 #define ITERATIONS 1000					
@@ -98,7 +98,10 @@ static int encrypt_data(char *in, int len, char *out) {
 	
 	// Add header information
 	out[0]=PACKET_HEADER;
-	step=(unsigned char *)&out[1];	
+	// Pack full packet length
+	out[1]=(0xff00&(len+HEADER_SIZE))>>8;
+	out[2]=(0xff&(len+HEADER_SIZE));
+	step=(unsigned char *)&out[3];	
 	memcpy(step,iv,IV_SIZE);
 	step+=IV_SIZE;
 	memcpy(step,tag,sizeof(tag));
@@ -120,7 +123,7 @@ static int decrypt_data(char *in, int len, char *out) {
 	memset(outbuf,0x00,MAX_LEN);
 	
 	// header information
-	step=in+1;
+	step=in+3; // First three bytes are header info / length only
 	memcpy(iv,step,IV_SIZE); // Extract the IV
 	step+=IV_SIZE;
 	memcpy(tag,step,16); // Extract the MAC
@@ -161,10 +164,9 @@ static int decrypt_data(char *in, int len, char *out) {
 ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 	char outbuf[MAX_LEN];
 	char temp[MAX_LEN];
-	char *step;
 	
-	int outlen, ret;
-
+	int outlen, ret, packet_len;
+	
 	memset(outbuf,0x00,MAX_LEN);
 	memset(temp,0x00,MAX_LEN);
 	
@@ -174,7 +176,8 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 	if (sockfd == 0) // Y U CALL ME W/ SOCKFD SET TO ZERO!?!?
 		return old_recv(sockfd, buf, len, flags);
 	
-	ret = old_recv(sockfd, (void *)temp, MAX_LEN, flags);
+	//ret = old_recv(sockfd, (void *)temp, MAX_LEN, flags);
+	ret = old_recv(sockfd, (void *)temp, 3, flags);
 	
 	if (ret < 1) { // Nothing to decrypt 
 		return ret;
@@ -184,9 +187,12 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 		fprintf(stderr,"[!] Client not using CryptHook\n");
 		return 0;
 	}
-	step=&temp[0];
+	// Unpack the full message length
+	packet_len = (temp[1]<<8)+temp[2];
 
-	outlen = decrypt_data(step,ret - HEADER_SIZE,&outbuf[0]);
+	ret = old_recv(sockfd, (void *)temp, packet_len, flags);
+
+	outlen = decrypt_data((char *)temp,ret-HEADER_SIZE,&outbuf[0]);
 
 	memcpy((void*)buf,(void*)outbuf,(size_t)outlen);
 	
@@ -196,11 +202,10 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 /* Hook recvfrom and decrypt the data before returning to the program */
 ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) {	
 	char outbuf[MAX_LEN];
-	char temp[MAX_LEN];
-	char *step;
+	unsigned char temp[MAX_LEN];
 	
-	int outlen, ret;
-
+	int outlen, ret, packet_len;
+	
 	memset(outbuf,0x00,MAX_LEN);
 	memset(temp,0x00,MAX_LEN);
 	
@@ -210,7 +215,9 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *
 	if (sockfd == 0) // Y U CALL ME W/ SOCKFD SET TO ZERO!?!?
 		return old_recvfrom(sockfd, buf, len, flags, src_addr, addrlen);
 	
-	ret = old_recvfrom(sockfd, (void *)temp, MAX_LEN, flags, src_addr, addrlen);
+	// Grab first three bytes to see if its our protocol and the length
+	ret = old_recvfrom(sockfd, (void *)temp, 3, MSG_PEEK, src_addr, addrlen);
+
 	if (ret < 1) { // Nothing to decrypt 
 		return ret;
 	}
@@ -219,9 +226,11 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *
 		fprintf(stderr,"[!] Client not using same crypto algorithm\n");
 		return 0;
 	}
-	step=&temp[0];
-
-	outlen = decrypt_data(step,ret-HEADER_SIZE,&outbuf[0]);
+	// Unpack the full message length
+	packet_len = (temp[1]<<8)+temp[2];
+	
+	ret = old_recvfrom(sockfd, (void *)temp, packet_len, flags, src_addr, addrlen);
+	outlen = decrypt_data((char *)temp,ret-HEADER_SIZE,&outbuf[0]);
 
 	memcpy((void*)buf,(void*)outbuf,(size_t)outlen);
 	
