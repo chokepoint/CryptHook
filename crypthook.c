@@ -163,7 +163,7 @@ static int decrypt_data(char *in, int len, char *out) {
 /* Hook recv and decrypt the data before returning to the program */
 ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 	char outbuf[MAX_LEN];
-	char temp[MAX_LEN];
+	unsigned char temp[MAX_LEN];
 	
 	int outlen, ret, packet_len;
 	
@@ -177,7 +177,7 @@ ssize_t recv(int sockfd, void *buf, size_t len, int flags) {
 		return old_recv(sockfd, buf, len, flags);
 	
 	//ret = old_recv(sockfd, (void *)temp, MAX_LEN, flags);
-	ret = old_recv(sockfd, (void *)temp, 3, flags);
+	ret = old_recv(sockfd, (void *)temp, 3, MSG_PEEK);
 	
 	if (ret < 1) { // Nothing to decrypt 
 		return ret;
