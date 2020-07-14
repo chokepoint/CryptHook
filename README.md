@@ -59,5 +59,3 @@ Example Use
 	
 	Client
 	$ LD_PRELOAD=./crypthook.so CH_KEY=donthackmebro ncat server 5000
-
-[www.chokepoint.net](http://www.chokepoint.net)
